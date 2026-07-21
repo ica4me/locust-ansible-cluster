@@ -2,6 +2,11 @@
 
 Cluster Locust terpusat dari VM master. Worker baru cukup ditambahkan ke inventory, kemudian jalankan playbook workers.
 
+Download
+```bash
+git clone https://github.com/ica4me/locust-ansible-cluster.git /opt/locust-ansible-cluster
+```
+
 ## 1. Persyaratan
 
 - Control/master: Ubuntu 22.04+ dan dapat SSH ke semua worker.
