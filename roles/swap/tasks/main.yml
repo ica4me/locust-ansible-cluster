@@ -1,0 +1,61 @@
+---
+- name: Check existing swapfile
+  ansible.builtin.stat:
+    path: "{{ swap_file }}"
+  register: swap_stat
+
+- name: Allocate swap file
+  ansible.builtin.command:
+    cmd: "fallocate -l {{ swap_size_mb }}M {{ swap_file }}"
+  when: not swap_stat.stat.exists
+
+- name: Set swap file permissions
+  ansible.builtin.file:
+    path: "{{ swap_file }}"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Detect swap signature
+  ansible.builtin.command:
+    cmd: "blkid -s TYPE -o value {{ swap_file }}"
+  register: swap_type
+  changed_when: false
+  failed_when: false
+
+- name: Create swap signature
+  ansible.builtin.command:
+    cmd: "mkswap {{ swap_file }}"
+  when: swap_type.stdout != 'swap'
+
+- name: Read active swap devices
+  ansible.builtin.command:
+    cmd: swapon --show=NAME --noheadings
+  register: active_swaps
+  changed_when: false
+
+- name: Enable swap immediately
+  ansible.builtin.command:
+    cmd: "swapon {{ swap_file }}"
+  when: swap_file not in active_swaps.stdout_lines
+
+- name: Persist swapfile in fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^{{ swap_file | regex_escape }}\s+'
+    line: "{{ swap_file }} none swap sw 0 0"
+    state: present
+
+- name: Persist swappiness
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-locust-swap.conf
+    content: "vm.swappiness={{ swap_swappiness }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+  register: swappiness_config
+
+- name: Apply swappiness
+  ansible.builtin.command:
+    cmd: sysctl --system
+  when: swappiness_config.changed

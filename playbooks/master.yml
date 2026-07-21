@@ -1,0 +1,8 @@
+---
+- name: Configure Locust master only
+  hosts: locust_master
+  become: true
+  gather_facts: true
+  roles:
+    - common
+    - master

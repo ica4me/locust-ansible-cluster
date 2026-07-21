@@ -1,0 +1,4 @@
+---
+- name: Restart Locust role service
+  ansible.builtin.debug:
+    msg: "Locust configuration changed; role-specific service will be restarted later."

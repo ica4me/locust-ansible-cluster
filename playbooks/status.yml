@@ -1,0 +1,31 @@
+---
+- name: Collect Locust cluster status
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Master service status
+      ansible.builtin.command: systemctl is-active locust-master.service
+      register: master_status
+      changed_when: false
+      failed_when: false
+      when: inventory_hostname in groups['locust_master']
+
+    - name: Count active worker services
+      ansible.builtin.shell: |
+        set -o pipefail
+        systemctl list-units 'locust-worker@*.service' --state=running --no-legend | wc -l
+      args:
+        executable: /bin/bash
+      register: worker_count
+      changed_when: false
+      when: inventory_hostname in groups['locust_workers']
+
+    - name: Show status
+      ansible.builtin.debug:
+        msg: >-
+          {% if inventory_hostname in groups['locust_master'] %}
+          master={{ master_status.stdout | default('unknown') }}
+          {% else %}
+          active_workers={{ worker_count.stdout | default('0') }}
+          {% endif %}

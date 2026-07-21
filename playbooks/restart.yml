@@ -1,0 +1,38 @@
+---
+- name: Restart Locust master
+  hosts: locust_master
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Restart master
+      ansible.builtin.systemd_service:
+        name: locust-master.service
+        state: restarted
+        enabled: true
+
+- name: Restart all Locust worker instances
+  hosts: locust_workers
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Recompute worker process count
+      ansible.builtin.set_fact:
+        locust_worker_processes: >-
+          {{ [
+              locust_worker_process_cap | int,
+              [
+                (ansible_processor_vcpus | int) - (locust_worker_reserved_cpu_cores | int),
+                (((ansible_memtotal_mb | int) - (locust_worker_reserved_memory_mb | int)) // (locust_worker_memory_per_process_mb | int))
+              ] | min
+            ] | min | int }}
+
+    - name: Enforce minimum worker process count
+      ansible.builtin.set_fact:
+        locust_worker_processes: "{{ [locust_worker_processes | int, locust_worker_min_processes | int] | max }}"
+
+    - name: Restart expected worker instances
+      ansible.builtin.systemd_service:
+        name: "locust-worker@{{ item }}.service"
+        state: restarted
+        enabled: true
+      loop: "{{ range(1, (locust_worker_processes | int) + 1) | list }}"

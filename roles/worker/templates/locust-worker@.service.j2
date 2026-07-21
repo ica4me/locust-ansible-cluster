@@ -1,0 +1,27 @@
+[Unit]
+Description=Locust Worker Process %i
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory={{ locust_home }}
+ExecStart={{ locust_venv }}/bin/locust \
+  -f {{ locust_home }}/locustfile.py \
+  --worker \
+  --master-host {{ locust_master_host }} \
+  --master-port {{ locust_master_port }} \
+  --loglevel INFO \
+  --logfile {{ locust_log_dir }}/worker-%i.log
+Restart=always
+RestartSec={{ locust_restart_sec }}
+LimitNOFILE={{ locust_limit_nofile }}
+LimitNPROC={{ locust_limit_nproc }}
+TimeoutStopSec=30
+KillSignal=SIGTERM
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

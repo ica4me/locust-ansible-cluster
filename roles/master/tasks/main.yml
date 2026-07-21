@@ -1,0 +1,16 @@
+---
+- name: Deploy Locust master systemd unit
+  ansible.builtin.template:
+    src: locust-master.service.j2
+    dest: /etc/systemd/system/locust-master.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart Locust master
+
+- name: Enable and start Locust master
+  ansible.builtin.systemd_service:
+    name: locust-master.service
+    enabled: true
+    state: started
+    daemon_reload: true

@@ -1,0 +1,82 @@
+---
+- name: Verify supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.os_family == 'Debian'
+      - ansible_facts.distribution == 'Ubuntu'
+      - ansible_facts.distribution_version is version('22.04', '>=')
+    fail_msg: "Target harus Ubuntu 22.04 atau lebih baru."
+
+- name: Install required packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create Locust directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ locust_home }}", mode: '0755' }
+    - { path: "{{ locust_log_dir }}", mode: '0755' }
+
+- name: Create Python virtual environment
+  ansible.builtin.command:
+    cmd: "python3 -m venv {{ locust_venv }}"
+    creates: "{{ locust_venv }}/bin/python"
+
+- name: Upgrade pip tooling
+  ansible.builtin.pip:
+    name:
+      - pip
+      - wheel
+    state: latest
+    virtualenv: "{{ locust_venv }}"
+
+- name: Install pinned Locust version
+  ansible.builtin.pip:
+    name: "locust=={{ locust_version }}"
+    state: present
+    virtualenv: "{{ locust_venv }}"
+
+- name: Install locust command symlink
+  ansible.builtin.file:
+    src: "{{ locust_venv }}/bin/locust"
+    dest: /usr/local/bin/locust
+    state: link
+    force: true
+
+- name: Deploy shared locustfile
+  ansible.builtin.copy:
+    src: locustfile.py
+    dest: "{{ locust_home }}/locustfile.py"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart Locust role service
+
+- name: Validate locustfile syntax
+  ansible.builtin.command:
+    cmd: "{{ locust_venv }}/bin/python -m py_compile {{ locust_home }}/locustfile.py"
+  changed_when: false
+
+- name: Test target domain health endpoints
+  ansible.builtin.uri:
+    url: "https://{{ item }}/health"
+    method: GET
+    status_code: 200
+    validate_certs: true
+    timeout: 10
+  loop: "{{ healthcheck_domains }}"
+  register: domain_health
+  retries: 3
+  delay: 2
+  until: domain_health is succeeded
+  when: locust_healthcheck_enabled | bool
+  tags:
+    - healthcheck

@@ -1,0 +1,81 @@
+---
+- name: Calculate CPU-limited worker process count
+  ansible.builtin.set_fact:
+    locust_cpu_process_limit: >-
+      {{ [
+          (ansible_processor_vcpus | int) - (locust_worker_reserved_cpu_cores | int),
+          locust_worker_min_processes | int
+        ] | max }}
+
+- name: Calculate memory-limited worker process count
+  ansible.builtin.set_fact:
+    locust_memory_process_limit: >-
+      {{ [
+          (((ansible_memtotal_mb | int) - (locust_worker_reserved_memory_mb | int)) // (locust_worker_memory_per_process_mb | int)),
+          locust_worker_min_processes | int
+        ] | max }}
+
+- name: Select final worker process count
+  ansible.builtin.set_fact:
+    locust_worker_processes: >-
+      {{ [
+          locust_cpu_process_limit | int,
+          locust_memory_process_limit | int,
+          locust_worker_process_cap | int
+        ] | min }}
+
+- name: Show worker sizing decision
+  ansible.builtin.debug:
+    msg:
+      host: "{{ inventory_hostname }}"
+      vcpus: "{{ ansible_processor_vcpus }}"
+      memory_mb: "{{ ansible_memtotal_mb }}"
+      cpu_limit: "{{ locust_cpu_process_limit }}"
+      memory_limit: "{{ locust_memory_process_limit }}"
+      selected_processes: "{{ locust_worker_processes }}"
+
+- name: Deploy Locust worker template unit
+  ansible.builtin.template:
+    src: locust-worker@.service.j2
+    dest: /etc/systemd/system/locust-worker@.service
+    owner: root
+    group: root
+    mode: '0644'
+  register: worker_unit
+
+- name: Reload systemd after worker template update
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: worker_unit.changed
+
+- name: Discover enabled Locust worker instances
+  ansible.builtin.shell: |
+    set -o pipefail
+    systemctl list-unit-files 'locust-worker@*.service' --no-legend \
+      | awk '$2 == "enabled" {print $1}' \
+      | sed -n 's/^locust-worker@\([0-9]\+\)\.service$/\1/p'
+  args:
+    executable: /bin/bash
+  register: enabled_worker_instances
+  changed_when: false
+
+- name: Enable and start expected worker instances
+  ansible.builtin.systemd_service:
+    name: "locust-worker@{{ item }}.service"
+    enabled: true
+    state: restarted
+  loop: "{{ range(1, (locust_worker_processes | int) + 1) | list }}"
+
+- name: Disable surplus worker instances after scale-down
+  ansible.builtin.systemd_service:
+    name: "locust-worker@{{ item }}.service"
+    enabled: false
+    state: stopped
+  loop: "{{ enabled_worker_instances.stdout_lines | map('int') | list }}"
+  when: item | int > locust_worker_processes | int
+
+- name: Verify master port is reachable
+  ansible.builtin.wait_for:
+    host: "{{ locust_master_host }}"
+    port: "{{ locust_master_port }}"
+    timeout: 10
