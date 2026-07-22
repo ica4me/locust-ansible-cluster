@@ -8,12 +8,13 @@ locust_master_port: 5557
 locust_web_host: 0.0.0.0
 locust_web_port: 8089
 locust_enable_rebalancing: true
-locust_target_host: "https://auth.poc.dcloud.biz.id"
+#locust_target_host: "https://auth.poc.dcloud.biz.id"
+locust_target_host: "http://fasthttp.poc.dcloud.biz.id:8080"
 
 # Otomatisasi jumlah proses worker:
 # safe mode: sisakan 1 vCPU untuk kernel/network/heartbeat.
 # Set 0 jika ingin memakai seluruh vCPU.
-locust_worker_reserved_cpu_cores: 1
+locust_worker_reserved_cpu_cores: 0
 locust_worker_reserved_memory_mb: 2048
 locust_worker_memory_per_process_mb: 768
 locust_worker_process_cap: 64
@@ -45,7 +46,7 @@ common_packages:
   - iproute2
   - netcat-openbsd
   - ca-certificates
-
+#locust_healthcheck_enabled: false
 locust_healthcheck_enabled: false
 healthcheck_domains:
   - auth.poc.dcloud.biz.id
